@@ -1,19 +1,34 @@
-# launchpad — the learner's ship
+# launchpad — your ship
 
-The repo every learner pushes to. A small **personal ship microsite** they customize (callsign,
-colour, emblem), and the thing their pipeline builds, tests, and ships across all four CI/CD
-sessions. Their **one workflow grows on this repo** — don't split it per session.
+A small personal **ship microsite**: a Three.js rocket you customize, and the thing your
+CI/CD pipeline builds, checks, and ships across the four sessions.
 
-**Keep it beginner-simple.** Light Three.js or 2D canvas — approachable to customize beats
-fidelity here. It must:
+## Customize it
 
-- build to static (`vite build` → `dist/`) for the **Pages** deploy in CI/CD 1;
-- carry a **config test** (`vitest`) that is the CI/CD 2 "fitness gate" (red = ABORT);
-- have a small **playwright** smoke;
-- ship its **own multi-stage Dockerfile** (`preview` on `:8080`) for the CI/CD 4 GHCR + EC2 deploy.
+Edit **`ship.config.json`** — the only file you need to touch:
 
-Each stage of the workflow POSTs to Mission Control — see the pinned contract in the repo-root
-`CLAUDE.md`. Config the learner edits (freeze once decided): e.g. `ship.config.json` →
-`{ callsign, color, emblem }`.
+```json
+{
+  "shipName": "Nebula Runner",
+  "color": "#22d3ee",
+  "emblem": "comet"
+}
+```
 
-Image: `ghcr.io/infratify/shipit-launchpad`, port `8080`. Starter `package.json` is a stub.
+- `shipName` — up to 24 characters.
+- `color` — a hex colour like `#22d3ee` (tints your rocket).
+- `emblem` — one of: `comet`, `bolt`, `star`, `ring`, `delta`, `phoenix`.
+
+Your **callsign** is your GitHub username — it's set automatically when the pipeline runs.
+
+## Run it
+
+```bash
+npm install
+npm run dev        # live preview
+npm test           # pre-flight check — fails (ABORT) if ship.config.json is invalid
+npm run build      # static site → dist/
+npm run preview    # serve the built site on :8080
+```
+
+`npm test` is the pre-flight gate: a bad `ship.config.json` exits non-zero and blocks the launch.
