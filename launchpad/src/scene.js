@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 export function createScene(container, params) {
   const scene = new THREE.Scene();
@@ -15,8 +16,28 @@ export function createScene(container, params) {
   key.position.set(3, 5, 4);
   scene.add(key);
 
-  const rocket = buildProceduralRocket(params.color);
+  // Start with the procedural rocket (instant, always works); upgrade to the
+  // vendored model if it loads.
+  let rocket = buildProceduralRocket(params.color);
   scene.add(rocket);
+
+  new GLTFLoader().load(
+    import.meta.env.BASE_URL + 'rocket.glb',
+    (gltf) => {
+      const model = gltf.scene;
+      tint(model, params.color);
+      fitToHeight(model, 2.4);
+      scene.remove(rocket);
+      disposeObject3D(rocket);
+      rocket = model;
+      scene.add(rocket);
+    },
+    undefined,
+    (err) => {
+      // Graceful degradation, but not silent — keep the procedural rocket and log why.
+      console.warn('rocket.glb failed to load — using the procedural rocket', err);
+    },
+  );
 
   let raf = 0;
   const clock = new THREE.Clock();
@@ -40,10 +61,42 @@ export function createScene(container, params) {
     dispose() {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', onResize);
+      disposeObject3D(rocket);
       renderer.dispose();
       renderer.domElement.remove();
     },
   };
+}
+
+function tint(object3d, color) {
+  const c = new THREE.Color(color);
+  object3d.traverse((node) => {
+    if (node.isMesh && node.material) {
+      node.material = node.material.clone();
+      node.material.color = c;
+    }
+  });
+}
+
+function fitToHeight(object3d, targetHeight) {
+  const box = new THREE.Box3().setFromObject(object3d);
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  box.getSize(size);
+  box.getCenter(center);
+  const scale = size.y > 0 ? targetHeight / size.y : 1;
+  object3d.scale.setScalar(scale);
+  object3d.position.sub(center.multiplyScalar(scale));
+}
+
+function disposeObject3D(obj) {
+  obj.traverse((node) => {
+    if (node.isMesh) {
+      node.geometry?.dispose();
+      const mats = Array.isArray(node.material) ? node.material : [node.material];
+      for (const m of mats) m?.dispose();
+    }
+  });
 }
 
 function buildProceduralRocket(color) {
