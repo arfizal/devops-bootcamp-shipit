@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { SHIPS, hueShiftFor } from './ship-schema.js';
 
 export function createScene(container, params, { onError } = {}) {
   const scene = new THREE.Scene();
@@ -20,6 +21,9 @@ export function createScene(container, params, { onError } = {}) {
   spinner.className = 'loader';
   spinner.style.setProperty('--ship-color', params.color);
   container.append(spinner);
+
+  const ship = SHIPS.find((s) => s.id === params.shipModel) || SHIPS[0];
+  const hue = hueShiftFor(params.color, ship.baseHue);
 
   let rocket = null;
   let disposed = false;
@@ -59,7 +63,7 @@ export function createScene(container, params, { onError } = {}) {
   // callbacks so a late load neither touches a torn-down scene nor leaks the GPU
   // resources it just allocated.
   new GLTFLoader().load(
-    import.meta.env.BASE_URL + 'rocket.glb',
+    import.meta.env.BASE_URL + ship.file,
     (gltf) => {
       spinner.remove();
       if (disposed) {
@@ -67,14 +71,14 @@ export function createScene(container, params, { onError } = {}) {
         return;
       }
       rocket = gltf.scene;
-      tint(rocket, params.color);
-      fitToHeight(rocket, 2.4);
+      applyHueShift(rocket, hue);
+      fitByMaxDimension(rocket, 2.8);
       scene.add(rocket);
     },
     undefined,
     (err) => {
       if (disposed) return;
-      console.warn('rocket.glb failed to load', err);
+      console.warn(`${ship.file} failed to load`, err);
       teardown();
       onError?.(err);
     },
@@ -83,23 +87,43 @@ export function createScene(container, params, { onError } = {}) {
   return { dispose: teardown };
 }
 
-function tint(object3d, color) {
-  const c = new THREE.Color(color);
+// Rotate the hue of every mesh material in the model by `radians`, in-shader,
+// after the base-colour texture is sampled. Low-saturation texels (black
+// cockpit, grey trim) barely move; saturated paint rotates to the target hue.
+function applyHueShift(object3d, radians) {
+  if (!radians) return;
   object3d.traverse((node) => {
     if (node.isMesh && node.material) {
       node.material = node.material.clone();
-      node.material.color = c;
+      node.material.onBeforeCompile = (shader) => {
+        shader.uniforms.uHue = { value: radians };
+        shader.fragmentShader =
+          'uniform float uHue;\n' +
+          shader.fragmentShader.replace(
+            '#include <map_fragment>',
+            `#include <map_fragment>
+             {
+               float a = uHue;
+               mat3 m = mat3(0.299,0.587,0.114, 0.299,0.587,0.114, 0.299,0.587,0.114)
+                 + cos(a)*mat3(0.701,-0.587,-0.114, -0.299,0.413,-0.114, -0.299,-0.587,0.886)
+                 + sin(a)*mat3(0.168,0.330,-0.497, -0.328,0.035,0.292, 1.250,-1.050,-0.203);
+               diffuseColor.rgb = clamp(m * diffuseColor.rgb, 0.0, 1.0);
+             }`,
+          );
+      };
+      node.material.needsUpdate = true;
     }
   });
 }
 
-function fitToHeight(object3d, targetHeight) {
+function fitByMaxDimension(object3d, target) {
   const box = new THREE.Box3().setFromObject(object3d);
   const size = new THREE.Vector3();
   const center = new THREE.Vector3();
   box.getSize(size);
   box.getCenter(center);
-  const scale = size.y > 0 ? targetHeight / size.y : 1;
+  const max = Math.max(size.x, size.y, size.z);
+  const scale = max > 0 ? target / max : 1;
   object3d.scale.setScalar(scale);
   object3d.position.sub(center.multiplyScalar(scale));
 }
